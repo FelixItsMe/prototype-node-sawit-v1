@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css"
+      integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
+      crossorigin=""
+    />
+    <style type="text/css">
+      * {
+        margin: 0;
+        padding: 0;
+        font-family: sans-serif;
+      }
+      #map {
+        width: 80vw;
+        height: 100vh;
+      }
+
+      .sidebar {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 20vw;
+        height: 100vh;
+        background-color: blueviolet;
+      }
+
+      button {
+        padding: 10px;
+        font-weight: bold;
+        background-color: rgb(255, 0, 200);
+        border: none;
+        color: #f2f2f2;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background-color: rgb(190, 17, 152);
+      }
+
+      .buttons {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        flex-grow: 3;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      table,
+      th,
+      td {
+        border: none;
+        padding: 0;
+      }
+
+      /* Define header styles */
+      th {
+        background-color: #f2f2f2;
+        color: #292929;
+        text-align: left;
+        padding: 8px;
+      }
+
+      /* Define alternating row colors */
+      tr:nth-child(even) {
+        background-color: #f9f9f9;
+        color: blueviolet;
+      }
+
+      tr:nth-child(odd) {
+        color: #f9f9f9;
+      }
+
+      /* Define cell styles */
+      td {
+        cursor: pointer;
+        padding: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div class="sidebar">
+      <div class="container">
+        <div class="buttons">
+          <button type="button" onclick="executeOpenAPI()">Open</button>
+          <button type="button" onclick="executeCloseAPI()">Close</button>
+          <button type="button" onclick="clearPolygon()">Clear</button>
+          <button type="button" onclick="saveData()">save</button>
+        </div>
+        <div class="table">
+          <table>
+            <thead>
+              <tr>
+                <th>Riwayat Polygon Disimpan</th>
+              </tr>
+            </thead>
+            <tbody id="telemetries-tbody">
+              <tr>
+                <td>1</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <script
+      src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"
+      integrity="sha512-gZwIG9x3wUXg2hdXF6+rVkLF/0Vi9U8D2Ntg4Ga5I5BZpVkVxlJWbSQtXPSiUTtC0TjtGOmxa1AJPuV0CPthew=="
+      crossorigin=""
+    ></script>
+    <script>
+      function isFloat(str) {
+        return !isNaN(parseFloat(str));
+      }
+      const map = L.map("map", {
+        center: [-6.967610833, 107.6590825],
+        zoom: 16,
+      });
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(map);
+
+      let latlngs = [];
+      let telemetries = [];
+      const polygon = L.polygon(latlngs, { color: "red" }).addTo(map);
+
+      const ws = new WebSocket("ws://localhost:8080");
+
+      ws.onopen = function () {
+        console.log("Connected to the server.");
+
+        ws.send("Hello, server!");
+      };
+      ws.onmessage = (message) => {
+        [id, lat, lng, alt, end] = message.data.split(",");
+
+        if (isFloat(lat) && isFloat(lng)) {
+          console.log(lat, lng, alt);
+
+          latlngs.push([parseFloat(lat), parseFloat(lng)]);
+
+          polygon.setLatLngs(latlngs);
+
+          map.fitBounds(polygon.getBounds());
+        }
+      };
+      ws.onclose = function () {
+        console.log("Connection to server closed.");
+      };
+
+      function executeOpenAPI() {
+        fetch("http://localhost:7979/open", { method: "POST" })
+          .then((response) => response.text())
+          .then((data) => {
+            console.log(data);
+          })
+          .catch((error) => {
+            console.error("Error while executing the open API:", error.message);
+          });
+      }
+
+      function executeCloseAPI() {
+        fetch("http://localhost:7979/close", { method: "POST" })
+          .then((response) => response.text())
+          .then((data) => {
+            console.log(data);
+          })
+          .catch((error) => {
+            console.error(
+              "Error while executing the close API:",
+              error.message
+            );
+          });
+      }
+
+      function getTelemetries() {
+        fetch("http://localhost:7979/telemetries", { method: "GET" })
+          .then((response) => response.json())
+          .then((data) => {
+            let tr = ``;
+
+            telemetries = [];
+
+            data.telemetries.forEach((telemetri, i) => {
+              telemetries.push(JSON.parse(telemetri.geolocation));
+              tr += `<tr>
+                  <td data-id="${i}">${telemetri.created_at}</td>
+                </tr>`;
+            });
+
+            document.getElementById("telemetries-tbody").innerHTML = tr;
+          })
+          .catch((error) => {
+            console.error(
+              "Error while executing the close API:",
+              error.message
+            );
+          });
+      }
+
+      function clearPolygon() {
+        polygon.setLatLngs([]);
+        latlngs = []
+      }
+
+      function saveData() {
+        const apiUrl = "http://localhost:7979/save"; // Replace with your API endpoint URL
+
+        const postData = {
+          data: latlngs,
+        };
+
+        const requestOptions = {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(postData),
+        };
+
+        // Send the POST request
+        fetch(apiUrl, requestOptions)
+          .then((response) => response.json())
+          .then((data) => {
+            console.log("Response:", data);
+            getTelemetries();
+            // Handle the API response data here
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            // Handle any errors that occurred during the request
+          });
+      }
+
+      getTelemetries();
+
+      document.getElementById("telemetries-tbody").addEventListener("click", e => {
+        e.preventDefault()
+
+        if (e.target.nodeName == "TD") {
+          
+          const key = e.target.attributes["data-id"].nodeValue
+          
+          polygon.setLatLngs(telemetries[key]);
+
+          map.fitBounds(polygon.getBounds());
+        }
+      })
+    </script>
+  </body>
+</html>
